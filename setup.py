@@ -22,7 +22,7 @@ setup(
     ],
     install_requires=[
         'librosa==0.7.0',
-        'numpy==1.17.1',
+        'numpy',
         'opencv-contrib-python==4.2.0.34',
         'opencv-python==4.1.0.25',
         'tensorflow==1.13.1',
