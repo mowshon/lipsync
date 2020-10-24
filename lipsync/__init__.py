@@ -8,7 +8,8 @@ import torch
 from lipsync.Wav2Lip import face_detection
 from lipsync.Wav2Lip.models import Wav2Lip
 import tempfile
-import requests
+import pickle
+import hashlib
 
 
 class LipSync:
@@ -49,6 +50,14 @@ class LipSync:
     # Prevent smoothing face detections over a short temporal window
     nosmooth = False
 
+    # This option enables caching for face positioning on every frame.
+    # Useful if you will be using the same video, but different audio.
+    save_cache = True
+
+    cache_dir = tempfile.gettempdir()
+
+    _filepath = ''
+
     img_size = 96
 
     mel_step_size = 16
@@ -74,7 +83,28 @@ class LipSync:
             boxes[i] = np.mean(window, axis=0)
         return boxes
 
+    def get_cache_filename(self):
+        lastmtime = os.path.getmtime(self._filepath)
+        filename = hashlib.md5(f'{self._filepath}{lastmtime}'.encode('utf-8')).hexdigest()
+        return os.path.join(self.cache_dir, f'{filename}.pk')
+
+    def get_from_cache(self):
+        if not self.save_cache:
+            return False
+
+        cache_filename = self.get_cache_filename()
+
+        if os.path.isfile(cache_filename):
+            with open(cache_filename, 'rb') as cached_file:
+                return pickle.load(cached_file)
+
+        return False
+
     def face_detect(self, images):
+        cache = self.get_from_cache()
+        if cache:
+            return cache
+
         detector = face_detection.FaceAlignment(
             face_detection.LandmarksType._2D,
             flip_input=False, device=self.device
@@ -90,7 +120,8 @@ class LipSync:
             except RuntimeError:
                 if batch_size == 1:
                     raise RuntimeError(
-                        'Image too big to run face detection on GPU. Please use the --resize_factor argument')
+                        'Image too big to run face detection on GPU. Please set the resize_factor parameter to True'
+                    )
                 batch_size //= 2
                 print('Recovering from OOM error; New batch size: {}'.format(batch_size))
                 continue
@@ -115,6 +146,11 @@ class LipSync:
         results = [[image[y1: y2, x1:x2], (y1, y2, x1, x2)] for image, (x1, y1, x2, y2) in zip(images, boxes)]
 
         del detector
+
+        if self.save_cache:
+            with open(self.get_cache_filename(), 'wb') as cached_file:
+                pickle.dump(results, cached_file)
+
         return results
 
     def datagen(self, frames, mels):
@@ -194,9 +230,10 @@ class LipSync:
         return f'{filename}.{ext}'
 
     def sync(self, face, audio_file, outfile):
+        self._filepath = face
+
         if not os.path.isfile(face):
             raise ValueError('face argument must be a valid path to video/image file')
-
         elif face.split('.')[1] in ['jpg', 'png', 'jpeg']:
             self.static = True
             full_frames = [cv2.imread(face)]
@@ -214,8 +251,9 @@ class LipSync:
                     video_stream.release()
                     break
                 if self.resize_factor > 1:
-                    frame = cv2.resize(frame,
-                                       (frame.shape[1] // self.resize_factor, frame.shape[0] // self.resize_factor))
+                    frame = cv2.resize(
+                        frame, (frame.shape[1] // self.resize_factor, frame.shape[0] // self.resize_factor)
+                    )
 
                 if self.rotate:
                     frame = cv2.rotate(frame, cv2.cv2.ROTATE_90_CLOCKWISE)
@@ -262,7 +300,7 @@ class LipSync:
 
         print("Length of mel chunks: {}".format(len(mel_chunks)))
 
-        full_frames = full_frames[:len(mel_chunks)]
+        #full_frames = full_frames[:len(mel_chunks)]
 
         batch_size = self.wav2lip_batch_size
         gen = self.datagen(full_frames.copy(), mel_chunks)
