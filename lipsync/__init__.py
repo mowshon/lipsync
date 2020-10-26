@@ -68,7 +68,8 @@ class LipSync:
     ffmpeg_loglevel = 'verbose'
 
     def __init__(self, **kwargs):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if 'device' not in kwargs.keys():
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         for key in kwargs:
             setattr(self, key, kwargs[key])
@@ -84,8 +85,7 @@ class LipSync:
         return boxes
 
     def get_cache_filename(self):
-        lastmtime = os.path.getmtime(self._filepath)
-        filename = hashlib.md5(f'{self._filepath}{lastmtime}'.encode('utf-8')).hexdigest()
+        filename = os.path.basename(self._filepath)
         return os.path.join(self.cache_dir, f'{filename}.pk')
 
     def get_from_cache(self):
@@ -93,9 +93,9 @@ class LipSync:
             return False
 
         cache_filename = self.get_cache_filename()
-
         if os.path.isfile(cache_filename):
             with open(cache_filename, 'rb') as cached_file:
+                print(f'Load cache: {cache_filename}')
                 return pickle.load(cached_file)
 
         return False
