@@ -16,7 +16,7 @@ setup(
     author_email='mowshon@yandex.ru',
     license='MIT',
     data_files=[
-        ('Wav2Lip', glob('Wav2Lip/**/*', recursive=True))
+        ('Wav2Lip', glob('lipsync/Wav2Lip/**/*', recursive=True))
     ],
     packages=find_packages(),
     classifiers=[
