@@ -14,7 +14,8 @@ setup(
     author='Rudrabha Mukhopadhyay, Mowshon',
     author_email='mowshon@yandex.ru',
     license='MIT',
-    packages=find_packages(include='lipsync/Wav2Lip'),
+    include_package_data=True,
+    packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
