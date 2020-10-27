@@ -1,4 +1,5 @@
 from setuptools import setup, find_packages
+from glob import glob
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -14,6 +15,9 @@ setup(
     author='Rudrabha Mukhopadhyay, Mowshon',
     author_email='mowshon@yandex.ru',
     license='MIT',
+    data_files=[
+        ('Wav2Lip', glob('Wav2Lip/*'))
+    ],
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3.7",
