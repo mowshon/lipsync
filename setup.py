@@ -15,10 +15,15 @@ setup(
     author='Rudrabha Mukhopadhyay, Mowshon',
     author_email='mowshon@yandex.ru',
     license='MIT',
-    data_files=[
-        ('Wav2Lip', glob('lipsync/Wav2Lip/**/*', recursive=True))
+    packages=[
+        'lipsync',
     ],
-    packages=find_packages(),
+    package_data={
+          'lipsync': [
+              '*',
+              'Wav2Lip/*'
+          ],
+      },
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
