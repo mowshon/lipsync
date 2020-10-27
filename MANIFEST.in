@@ -1,1 +1,1 @@
-recursive-include lipsync/Wav2Lip *
+recursive-include Wav2Lip *
