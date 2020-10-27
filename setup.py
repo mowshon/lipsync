@@ -16,7 +16,7 @@ setup(
     license='MIT',
     include_package_data=True,
     package_data={
-        'Wav2Lip': ['*'],
+        'lipsync.Wav2Lip': ['*'],
     },
     packages=find_packages(),
     classifiers=[
