@@ -16,6 +16,10 @@ setup(
     author_email='mowshon@yandex.ru',
     license='MIT',
     packages=find_packages(),
+    include_package_data=True,
+    package_data={
+        'Wav2Lip': ['*'],
+    },
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
