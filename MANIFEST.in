@@ -1,1 +1,1 @@
-include lipsync/Wav2Lip/*
+recursive-include lipsync/Wav2Lip/*
