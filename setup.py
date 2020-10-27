@@ -15,10 +15,7 @@ setup(
     author='Rudrabha Mukhopadhyay, Mowshon',
     author_email='mowshon@yandex.ru',
     license='MIT',
-    data_files=[
-        ('Wav2Lip', glob('Wav2Lip/**/*', recursive=True))
-    ],
-    packages=find_packages(),
+    packages=find_packages('Wav2Lip'),
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
