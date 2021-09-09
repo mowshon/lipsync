@@ -9,7 +9,7 @@ from lipsync.Wav2Lip import face_detection
 from lipsync.Wav2Lip.models import Wav2Lip
 import tempfile
 import pickle
-import hashlib
+import moviepy.editor as mp
 
 
 class LipSync:
@@ -234,37 +234,16 @@ class LipSync:
 
         if not os.path.isfile(face):
             raise ValueError('face argument must be a valid path to video/image file')
-        elif face.split('.')[1] in ['jpg', 'png', 'jpeg']:
+
+        if face.split('.')[1] in ['jpg', 'png', 'jpeg']:
             self.static = True
             full_frames = [cv2.imread(face)]
             fps = self.fps
         else:
-            video_stream = cv2.VideoCapture(face)
-            fps = video_stream.get(cv2.CAP_PROP_FPS)
-
             print('Reading video frames...')
-
-            full_frames = []
-            while 1:
-                still_reading, frame = video_stream.read()
-                if not still_reading:
-                    video_stream.release()
-                    break
-                if self.resize_factor > 1:
-                    frame = cv2.resize(
-                        frame, (frame.shape[1] // self.resize_factor, frame.shape[0] // self.resize_factor)
-                    )
-
-                if self.rotate:
-                    frame = cv2.rotate(frame, cv2.cv2.ROTATE_90_CLOCKWISE)
-
-                y1, y2, x1, x2 = self.crop
-                if x2 == -1: x2 = frame.shape[1]
-                if y2 == -1: y2 = frame.shape[0]
-
-                frame = frame[y1:y2, x1:x2]
-
-                full_frames.append(frame)
+            video = mp.VideoFileClip(face)
+            full_frames = [cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR) for frame_np in video.iter_frames()]
+            fps = video.fps
 
         print("Number of frames available for inference: " + str(len(full_frames)))
 
