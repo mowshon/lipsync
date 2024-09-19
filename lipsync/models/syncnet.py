@@ -1,8 +1,7 @@
-import torch
 from torch import nn
 from torch.nn import functional as F
+from lipsync.models.conv import Conv2d
 
-from .conv import Conv2d
 
 class SyncNet_color(nn.Module):
     def __init__(self):
@@ -61,6 +60,5 @@ class SyncNet_color(nn.Module):
 
         audio_embedding = F.normalize(audio_embedding, p=2, dim=1)
         face_embedding = F.normalize(face_embedding, p=2, dim=1)
-
 
         return audio_embedding, face_embedding

@@ -6,7 +6,7 @@ import subprocess
 from tqdm import tqdm
 import torch
 from lipsync.wav2lip import face_detection
-from lipsync.wav2lip.models import Wav2Lip
+from lipsync.models import Wav2Lip
 import tempfile
 import pickle
 import moviepy.editor as mp

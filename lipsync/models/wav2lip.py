@@ -1,9 +1,8 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
-import math
+from torch.nn import functional
+from lipsync.models.conv import Conv2dTranspose, Conv2d, nonorm_Conv2d
 
-from .conv import Conv2dTranspose, Conv2d, nonorm_Conv2d
 
 class Wav2Lip(nn.Module):
     def __init__(self):
@@ -31,7 +30,7 @@ class Wav2Lip(nn.Module):
 
             nn.Sequential(Conv2d(256, 512, kernel_size=3, stride=2, padding=1),     # 3,3
             Conv2d(512, 512, kernel_size=3, stride=1, padding=1, residual=True),),
-            
+
             nn.Sequential(Conv2d(512, 512, kernel_size=3, stride=1, padding=0),     # 1, 1
             Conv2d(512, 512, kernel_size=1, stride=1, padding=0)),])
 
@@ -72,7 +71,7 @@ class Wav2Lip(nn.Module):
             Conv2d(256, 256, kernel_size=3, stride=1, padding=1, residual=True),
             Conv2d(256, 256, kernel_size=3, stride=1, padding=1, residual=True),), # 24, 24
 
-            nn.Sequential(Conv2dTranspose(320, 128, kernel_size=3, stride=2, padding=1, output_padding=1), 
+            nn.Sequential(Conv2dTranspose(320, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             Conv2d(128, 128, kernel_size=3, stride=1, padding=1, residual=True),
             Conv2d(128, 128, kernel_size=3, stride=1, padding=1, residual=True),), # 48, 48
 
@@ -82,7 +81,7 @@ class Wav2Lip(nn.Module):
 
         self.output_block = nn.Sequential(Conv2d(80, 32, kernel_size=3, stride=1, padding=1),
             nn.Conv2d(32, 3, kernel_size=1, stride=1, padding=0),
-            nn.Sigmoid()) 
+            nn.Sigmoid())
 
     def forward(self, audio_sequences, face_sequences):
         # audio_sequences = (B, T, 1, 80, 16)
@@ -110,7 +109,7 @@ class Wav2Lip(nn.Module):
                 print(x.size())
                 print(feats[-1].size())
                 raise e
-            
+
             feats.pop()
 
         x = self.output_block(x)
@@ -121,8 +120,9 @@ class Wav2Lip(nn.Module):
 
         else:
             outputs = x
-            
+
         return outputs
+
 
 class Wav2Lip_disc_qual(nn.Module):
     def __init__(self):
@@ -145,7 +145,7 @@ class Wav2Lip_disc_qual(nn.Module):
 
             nn.Sequential(nonorm_Conv2d(512, 512, kernel_size=3, stride=2, padding=1),     # 3,3
             nonorm_Conv2d(512, 512, kernel_size=3, stride=1, padding=1),),
-            
+
             nn.Sequential(nonorm_Conv2d(512, 512, kernel_size=3, stride=1, padding=0),     # 1, 1
             nonorm_Conv2d(512, 512, kernel_size=1, stride=1, padding=0)),])
 
@@ -168,7 +168,7 @@ class Wav2Lip_disc_qual(nn.Module):
         for f in self.face_encoder_blocks:
             false_feats = f(false_feats)
 
-        false_pred_loss = F.binary_cross_entropy(self.binary_pred(false_feats).view(len(false_feats), -1), 
+        false_pred_loss = functional.binary_cross_entropy(self.binary_pred(false_feats).view(len(false_feats), -1),
                                         torch.ones((len(false_feats), 1)).cuda())
 
         return false_pred_loss
