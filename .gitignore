@@ -128,3 +128,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .idea/
+
+/*.mp3
+/*.mp4
+/*.wav
+/weights
+/*.png
+/cache
+/example.py
