@@ -1,6 +1,7 @@
 import torch
 from enum import Enum
 import numpy as np
+import lipsync.wav2lip.face_detection.detection.sfd as face_detector_module
 
 
 class LandmarksType(Enum):
@@ -29,21 +30,17 @@ class NetworkSize(Enum):
 
 
 class FaceAlignment:
-    def __init__(self, landmarks_type, network_size=NetworkSize.LARGE,
-                 device='cuda', flip_input=False, face_detector='sfd', verbose=False):
-        self.device = device
+    def __init__(self, landmarks_type, device='cuda', flip_input=False, verbose=False):
         self.flip_input = flip_input
         self.landmarks_type = landmarks_type
         self.verbose = verbose
 
-        network_size = int(network_size)
+        if device == 'cuda':
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        if 'cuda' in device:
+        if 'cuda' == device:
             torch.backends.cudnn.benchmark = True
 
-        # Get the face detector
-        face_detector_module = __import__('lipsync.Wav2Lip.face_detection.detection.' + face_detector,
-                                          globals(), locals(), [face_detector], 0)
         self.face_detector = face_detector_module.FaceDetector(device=device, verbose=verbose)
 
     def get_detections_for_batch(self, images):
