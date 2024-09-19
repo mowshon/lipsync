@@ -1,17 +1,6 @@
-from __future__ import print_function
-import os
 import torch
-from torch.utils.model_zoo import load_url
 from enum import Enum
 import numpy as np
-import cv2
-try:
-    import urllib.request as request_file
-except BaseException:
-    import urllib as request_file
-
-from .models import FAN, ResNetDepth
-from .utils import *
 
 
 class LandmarksType(Enum):
@@ -28,9 +17,6 @@ class LandmarksType(Enum):
 
 
 class NetworkSize(Enum):
-    # TINY = 1
-    # SMALL = 2
-    # MEDIUM = 3
     LARGE = 4
 
     def __new__(cls, value):
@@ -41,7 +27,6 @@ class NetworkSize(Enum):
     def __int__(self):
         return self.value
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
 
 class FaceAlignment:
     def __init__(self, landmarks_type, network_size=NetworkSize.LARGE,
@@ -72,7 +57,7 @@ class FaceAlignment:
                 continue
             d = d[0]
             d = np.clip(d, 0, None)
-            
+
             x1, y1, x2, y2 = map(int, d[:-1])
             results.append((x1, y1, x2, y2))
 
