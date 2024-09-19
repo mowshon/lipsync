@@ -43,6 +43,3 @@ class HParams:
 
     img_size = 96
     fps = 25
-
-
-hparams = HParams()

@@ -2,7 +2,10 @@ import librosa
 import librosa.filters
 import numpy as np
 from scipy import signal
-from lipsync.wav2lip.hparams import hparams as hp
+from lipsync.hparams import HParams
+
+
+hp = HParams()
 
 
 def load_wav(path, sr):
