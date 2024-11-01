@@ -6,15 +6,16 @@ from tqdm import tqdm
 import torch
 import tempfile
 import pickle
-import moviepy.editor as mp
 
 from lipsync import audio
 from lipsync.wav2lip import face_detection
-from lipsync.models import Wav2Lip
+from lipsync.helpers import read_frames
+from lipsync.models import load_model
 
 
 class LipSync:
-    """Class for lip-syncing videos using the Wav2Lip model.
+    """
+    Class for lip-syncing videos using the Wav2Lip model.
 
     Attributes:
         checkpoint_path (str): Path to the saved Wav2Lip model checkpoint.
@@ -53,18 +54,23 @@ class LipSync:
     _filepath = ''
     img_size = 96
     mel_step_size = 16
-    device = 'cuda'
+    device = 'cpu'
     ffmpeg_loglevel = 'verbose'
+    model = 'wav2lip'
 
     def __init__(self, **kwargs):
-        """Initializes LipSync with custom parameters.
+        """
+        Initializes LipSync with custom parameters.
 
         Args:
             **kwargs: Arbitrary keyword arguments for setting class attributes.
         """
-        if 'device' not in kwargs:
-            # Set device to 'cuda' if available, else 'cpu'
+        device = kwargs.get('device', self.device)
+        if device == 'cuda':
+            # Even when ‘cuda’ is chosen, it is not always available.
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        print('USE Device:', self.device)
 
         # Update class attributes with provided keyword arguments
         for key in kwargs:
@@ -72,7 +78,8 @@ class LipSync:
 
     @staticmethod
     def get_smoothened_boxes(boxes: list, t: int) -> list:
-        """Smoothens bounding boxes over a temporal window.
+        """
+        Smoothens bounding boxes over a temporal window.
 
         Args:
             boxes (List[List[float]]): List of bounding boxes.
@@ -93,7 +100,8 @@ class LipSync:
         return boxes
 
     def get_cache_filename(self) -> str:
-        """Generates a filename for caching face detection results.
+        """
+        Generates a filename for caching face detection results.
 
         Returns:
             str: Cache filename.
@@ -105,7 +113,8 @@ class LipSync:
         return os.path.join(self.cache_dir, f'{filename}.pk')
 
     def get_from_cache(self) -> list | bool:
-        """Retrieves face detection results from cache if available.
+        """
+        Retrieves face detection results from cache if available.
 
         Returns:
             List or bool: Cached results if available, else False.
@@ -123,7 +132,8 @@ class LipSync:
         return False
 
     def face_detect(self, images: list) -> list:
-        """Performs face detection on a list of images.
+        """
+        Performs face detection on a list of images.
 
         Args:
             images (List[np.ndarray]): List of images in BGR format.
@@ -187,7 +197,7 @@ class LipSync:
         boxes = np.array(results)
         if not self.nosmooth:
             # Smooth the bounding boxes over time
-            boxes = self.get_smoothened_boxes(boxes, T=5)
+            boxes = self.get_smoothened_boxes(boxes, t=5)
         results = [
             # Crop the face region from the image
             [image[int(y1): int(y2), int(x1): int(x2)], (int(y1), int(y2), int(x1), int(x2))]
@@ -222,7 +232,9 @@ class LipSync:
 
         if self.box[0] == -1:
             # Perform face detection if bounding box is not specified
-            face_det_results = self.face_detect(frames if not self.static else [frames[0]])
+            face_det_results = self.face_detect(
+                frames if not self.static else [frames[0]]
+            )
         else:
             # Use the specified bounding box
             print('Using the specified bounding box instead of face detection...')
@@ -273,49 +285,6 @@ class LipSync:
 
             yield img_batch_np, mel_batch_np, frame_batch, coords_batch
 
-    def _load(self, checkpoint_path: str) -> dict:
-        """Loads the model checkpoint.
-
-        Args:
-            checkpoint_path (str): Path to the checkpoint file.
-
-        Returns:
-            Dict: Loaded checkpoint.
-        """
-        if self.device == 'cuda':
-            # Load checkpoint onto GPU
-            checkpoint = torch.load(checkpoint_path)
-        else:
-            # Load checkpoint onto CPU
-            checkpoint = torch.load(
-                checkpoint_path, map_location=lambda storage, loc: storage
-            )
-        return checkpoint
-
-    def load_model(self) -> torch.nn.Module:
-        """
-        Loads the Wav2Lip model.
-
-        Returns:
-            torch.nn.Module: Loaded Wav2Lip model.
-        """
-        model = Wav2Lip()
-        print(f"Load checkpoint from: {self.checkpoint_path}")
-        checkpoint = self._load(self.checkpoint_path)
-        s = checkpoint["state_dict"]
-
-        # Remove 'module.' prefix if present
-        new_s = {k.replace('module.', ''): v for k, v in s.items()}
-
-        # Load the model state
-        model.load_state_dict(new_s)
-
-        # Move model to the specified device
-        model = model.to(self.device)
-
-        # Set model to evaluation mode
-        return model.eval()
-
     @staticmethod
     def create_temp_file(ext: str) -> str:
         """Creates a temporary file with a specific extension.
@@ -361,14 +330,8 @@ class LipSync:
             fps = self.fps
         else:
             print('Reading video frames...')
-            # Read video frames using moviepy
-            video = mp.VideoFileClip(face)
             # Convert frames from RGB to BGR
-            full_frames = [
-                cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-                for frame_np in video.iter_frames()
-            ]
-            fps = video.fps
+            full_frames, fps = read_frames(face)
 
         print(f"Number of frames available for inference: {len(full_frames)}")
 
@@ -381,6 +344,7 @@ class LipSync:
                 f'ffmpeg -y -i {audio_file} -strict -2 {filename} '
                 f'-loglevel {self.ffmpeg_loglevel}'
             )
+
             subprocess.call(command, shell=True)
             audio_file = filename
 
@@ -421,7 +385,7 @@ class LipSync:
         ):
             if i == 0:
                 # Load the Wav2Lip model
-                model = self.load_model()
+                model = load_model(self.model, self.device, self.checkpoint_path)
                 print("Model loaded")
 
                 # Get frame dimensions

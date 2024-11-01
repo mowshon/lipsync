@@ -137,3 +137,5 @@ dmypy.json
 /cache
 /example.py
 /*.pth
+/test_*.py
+/source

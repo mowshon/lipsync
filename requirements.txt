@@ -1,0 +1,7 @@
+av
+tf-keras
+retina-face
+torch
+librosa
+scipy
+facenet-pytorch
