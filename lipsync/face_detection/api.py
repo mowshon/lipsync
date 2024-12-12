@@ -1,7 +1,7 @@
 import torch
 from enum import Enum
 import numpy as np
-import lipsync.wav2lip.face_detection.detection.sfd as face_detector_module
+import lipsync.face_detection.detection.sfd as face_detector_module
 
 
 class LandmarksType(Enum):

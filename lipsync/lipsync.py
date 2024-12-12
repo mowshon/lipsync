@@ -8,7 +8,7 @@ import tempfile
 import pickle
 
 from lipsync import audio
-from lipsync.wav2lip import face_detection
+from lipsync import face_detection
 from lipsync.helpers import read_frames
 from lipsync.models import load_model
 from typing import List, Tuple, Union
