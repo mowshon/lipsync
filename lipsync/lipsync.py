@@ -20,113 +20,86 @@ class LipSync:
     Attributes:
         checkpoint_path (str): Path to the saved Wav2Lip model checkpoint.
         static (bool): If True, uses only the first video frame for inference.
-        fps (float): Frames per second; used if input is a static image.
-        pads (List[int]): Padding for the face bounding box (top, bottom, left, right).
-        face_det_batch_size (int): Batch size for face detection.
-        wav2lip_batch_size (int): Batch size for the Wav2Lip model.
-        resize_factor (int): Factor to reduce the resolution of the video frames.
-        crop (List[int]): Crop dimensions for the video frames (top, bottom, left, right).
-        box (List[int]): Fixed bounding box coordinates for the face (top, bottom, left, right).
-        rotate (bool): If True, rotates the video frames by 90 degrees.
-        nosmooth (bool): If True, disables smoothing of face detections over time.
+        fps (float): Frames per second, used when input is a static image.
+        pads (List[int]): Padding for face bounding boxes as [top, bottom, left, right].
+        face_det_batch_size (int): Batch size for face detection inference.
+        wav2lip_batch_size (int): Batch size for Wav2Lip model inference.
+        resize_factor (int): Factor by which to reduce the resolution of the input frames.
+        crop (List[int]): Crop dimensions [top, bottom, left, right] for input frames.
+        box (List[int]): Fixed bounding box coordinates [y1, y2, x1, x2] for the face.
+        rotate (bool): If True, rotates the input frames by 90 degrees.
+        nosmooth (bool): If True, disables temporal smoothing of face bounding boxes.
         save_cache (bool): If True, enables caching of face detection results.
-        cache_dir (str): Directory to store cache files.
-        img_size (int): Size to which face images are resized.
-        mel_step_size (int): Step size for mel spectrogram chunks.
-        device (str): Device to run the model on ('cuda' or 'cpu').
-        ffmpeg_loglevel (str): Log level for ffmpeg commands.
+        cache_dir (str): Directory path to store cached face detection results.
+        _filepath (str): Internal path to the input face/video file.
+        img_size (int): Size to which the face region is resized for model input.
+        mel_step_size (int): Step size for the mel spectrogram chunks fed into the model.
+        device (str): Device on which the model runs, either 'cuda' or 'cpu'.
+        ffmpeg_loglevel (str): Log level for ffmpeg operations, e.g. 'verbose'.
+        model (str): Name of the model to load (e.g., 'wav2lip').
     """
 
     # Default parameters
-    checkpoint_path = ''
-    static = False
-    fps = 25.0
-    pads = [0, 10, 0, 0]
-    face_det_batch_size = 16
-    wav2lip_batch_size = 128
-    resize_factor = 1
-    crop = [0, -1, 0, -1]
-    box = [-1, -1, -1, -1]
-    rotate = False
-    nosmooth = False
-    save_cache = True
-    cache_dir = tempfile.gettempdir()
-    _filepath = ''
-    img_size = 96
-    mel_step_size = 16
-    device = 'cpu'
-    ffmpeg_loglevel = 'verbose'
-    model = 'wav2lip'
+    checkpoint_path: str = ''
+    static: bool = False
+    fps: float = 25.0
+    pads: list[int] = [0, 10, 0, 0]
+    face_det_batch_size: int = 16
+    wav2lip_batch_size: int = 128
+    resize_factor: int = 1
+    crop: list[int] = [0, -1, 0, -1]
+    box: list[int] = [-1, -1, -1, -1]
+    rotate: bool = False
+    nosmooth: bool = False
+    save_cache: bool = True
+    cache_dir: str = tempfile.gettempdir()
+    _filepath: str = ''
+    img_size: int = 96
+    mel_step_size: int = 16
+    device: str = 'cpu'
+    ffmpeg_loglevel: str = 'verbose'
+    model: str = 'wav2lip'
 
     def __init__(self, **kwargs):
-        """
-        Initializes LipSync with custom parameters.
-
-        Args:
-            **kwargs: Arbitrary keyword arguments for setting class attributes.
-        """
+        # Check if CUDA is actually available before setting device
         device = kwargs.get('device', self.device)
-        if device == 'cuda':
-            # Even when ‘cuda’ is chosen, it is not always available.
-            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-        print('USE Device:', self.device)
+        self.device = 'cuda' if (device == 'cuda' and torch.cuda.is_available()) else 'cpu'
+        print('Using device:', self.device)
 
         # Update class attributes with provided keyword arguments
-        for key in kwargs:
-            setattr(self, key, kwargs[key])
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     @staticmethod
-    def get_smoothened_boxes(boxes: list, t: int) -> list:
+    def get_smoothened_boxes(boxes: np.ndarray, t: int) -> np.ndarray:
         """
-        Smoothens bounding boxes over a temporal window.
-
-        Args:
-            boxes (List[List[float]]): List of bounding boxes.
-            t (int): Temporal window size.
-
-        Returns:
-            List[List[float]]: Smoothened bounding boxes.
+        Smoothens bounding boxes over a temporal window of size t.
         """
-        for i in range(len(boxes)):
-            if i + t > len(boxes):
-                # If window exceeds list length, use the last T boxes
-                window = boxes[len(boxes) - t:]
-            else:
-                # Define the window of t boxes
-                window = boxes[i: i + t]
-            # Compute the mean of the boxes in the window
+        length = len(boxes)
+        for i in range(length):
+            window_end = min(i + t, length)
+            window = boxes[i:window_end]
             boxes[i] = np.mean(window, axis=0)
         return boxes
 
     def get_cache_filename(self) -> str:
         """
         Generates a filename for caching face detection results.
-
-        Returns:
-            str: Cache filename.
         """
-        # Get the base name of the file
         filename = os.path.basename(self._filepath)
-
-        # Construct the cache filename
         return os.path.join(self.cache_dir, f'{filename}.pk')
 
-    def get_from_cache(self) -> list | bool:
+    def get_from_cache(self):
         """
         Retrieves face detection results from cache if available.
-
-        Returns:
-            List or bool: Cached results if available, else False.
         """
         if not self.save_cache:
             return False
 
         cache_filename = self.get_cache_filename()
         if os.path.isfile(cache_filename):
-            # Load cached face detection results
+            print(f'Loading from cache: {cache_filename}')
             with open(cache_filename, 'rb') as cached_file:
-                print(f'Load cache: {cache_filename}')
                 return pickle.load(cached_file)
 
         return False
@@ -134,299 +107,243 @@ class LipSync:
     def face_detect(self, images: list) -> list:
         """
         Performs face detection on a list of images.
-
-        Args:
-            images (List[np.ndarray]): List of images in BGR format.
-
-        Returns:
-            List[Tuple[np.ndarray, Tuple[int, int, int, int]]]: Detected faces and their coordinates.
-
-        Raises:
-            ValueError: If a face is not detected in an image.
-            RuntimeError: If an image is too large for GPU processing.
         """
-        # Attempt to load face detection results from cache
+        # Attempt to load from cache
         cache = self.get_from_cache()
         if cache:
             return cache
 
-        # Initialize the face detector
         detector = face_detection.FaceAlignment(
             face_detection.LandmarksType._2D,
             flip_input=False, device=self.device
         )
 
         batch_size = self.face_det_batch_size
+        predictions = []
 
+        # Efficient batch handling with fallback if OOM occurs
         while True:
-            predictions = []
             try:
-                # Process images in batches
-                for i in tqdm(range(0, len(images), batch_size)):
+                for i in tqdm(range(0, len(images), batch_size), desc="Face Detection"):
                     batch = np.array(images[i:i + batch_size])
-                    # Get face detections for the batch
-                    predictions.extend(detector.get_detections_for_batch(batch))
+                    preds = detector.get_detections_for_batch(batch)
+                    predictions.extend(preds)
             except RuntimeError:
+                # Decrease batch size if we run into GPU memory issues
                 if batch_size == 1:
-                    # If batch size is 1 and still failing, raise error
-                    raise RuntimeError(
-                        'Image too big for GPU. Please set resize_factor to reduce image size.'
-                    )
-                # Reduce batch size to recover from OOM error
+                    del detector
+                    raise RuntimeError('Image too large for GPU. Try reducing resize_factor.')
                 batch_size //= 2
-                print(f'Recovering from OOM error; New batch size: {batch_size}')
+                print(f'OOM encountered. Reducing batch size to {batch_size}. Retrying...')
+                predictions.clear()
                 continue
             break
 
         results = []
         pady1, pady2, padx1, padx2 = self.pads
+        img_h, img_w = images[0].shape[:2]
+
         for rect, image in zip(predictions, images):
             if rect is None:
-                # Save the frame where face was not detected
                 cv2.imwrite('temp/faulty_frame.jpg', image)
-                raise ValueError('Face not detected! Ensure all frames contain a face.')
+                del detector
+                raise ValueError('Face not detected! Make sure every frame has a detectable face.')
 
-            # Adjust bounding box with padding
             y1 = max(0, rect[1] - pady1)
-            y2 = min(image.shape[0], rect[3] + pady2)
+            y2 = min(img_h, rect[3] + pady2)
             x1 = max(0, rect[0] - padx1)
-            x2 = min(image.shape[1], rect[2] + padx2)
-
+            x2 = min(img_w, rect[2] + padx2)
             results.append([x1, y1, x2, y2])
 
         boxes = np.array(results)
         if not self.nosmooth:
-            # Smooth the bounding boxes over time
             boxes = self.get_smoothened_boxes(boxes, t=5)
-        results = [
-            # Crop the face region from the image
-            [image[int(y1): int(y2), int(x1): int(x2)], (int(y1), int(y2), int(x1), int(x2))]
-            for image, (x1, y1, x2, y2) in zip(images, boxes)
-        ]
 
-        # Clean up the detector
+        # Extract cropped faces
+        cropped_results = []
+        for (x1, y1, x2, y2), image in zip(boxes, images):
+            face_img = image[int(y1): int(y2), int(x1): int(x2)]
+            cropped_results.append([face_img, (int(y1), int(y2), int(x1), int(x2))])
+
         del detector
 
+        # Save to cache if enabled
         if self.save_cache:
-            # Save face detection results to cache
             with open(self.get_cache_filename(), 'wb') as cached_file:
-                pickle.dump(results, cached_file)
+                pickle.dump(cropped_results, cached_file)
 
-        return results
+        return cropped_results
 
     def datagen(self, frames: list, mels: list):
-        """Generator yielding batches of images and mel spectrograms.
-
-        Args:
-            frames (List[np.ndarray]): List of video frames.
-            mels (List[np.ndarray]): List of mel spectrogram chunks.
-
-        Yields:
-            Tuple[np.ndarray, np.ndarray, List[np.ndarray], List[Tuple[int, int, int, int]]]:
-                - img_batch: Batch of images.
-                - mel_batch: Batch of mel spectrograms.
-                - frame_batch: List of frames.
-                - coords_batch: List of coordinates.
         """
-        img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
-
+        Generator that yields batches of images and mel spectrograms.
+        """
         if self.box[0] == -1:
-            # Perform face detection if bounding box is not specified
-            face_det_results = self.face_detect(
-                frames if not self.static else [frames[0]]
-            )
+            # Perform detection on all frames if not static, else only on the first frame
+            face_det_results = self.face_detect(frames if not self.static else [frames[0]])
         else:
-            # Use the specified bounding box
-            print('Using the specified bounding box instead of face detection...')
+            # Using a fixed bounding box
+            print('Using specified bounding box, skipping face detection.')
             y1, y2, x1, x2 = self.box
             face_det_results = [
                 [f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in frames
             ]
 
+        img_batch = []
+        mel_batch = []
+        frame_batch = []
+        coords_batch = []
+        batch_size = self.wav2lip_batch_size
+
+        # Pre-allocate arrays if possible (optional optimization)
+        # Since mel and frames vary in size, and we might not know exact batch count in advance,
+        # we will stick to appending.
+
         for i, m in enumerate(mels):
-            idx = 0 if self.static else i % len(frames)
-            frame_to_save = frames[idx].copy()
-            face, coords = face_det_results[idx].copy()
+            idx = 0 if self.static else (i % len(frames))
+            frame_to_save = frames[idx]
+            face, coords = face_det_results[idx]
+            face_resized = cv2.resize(face, (self.img_size, self.img_size))
 
-            # Resize face image to the model input size
-            face = cv2.resize(face, (self.img_size, self.img_size))
-
-            img_batch.append(face)
+            img_batch.append(face_resized)
             mel_batch.append(m)
             frame_batch.append(frame_to_save)
             coords_batch.append(coords)
 
-            if len(img_batch) >= self.wav2lip_batch_size:
-                img_batch_np = np.asarray(img_batch)
-                mel_batch_np = np.asarray(mel_batch)
+            # Yield batch if full
+            if len(img_batch) >= batch_size:
+                yield self._prepare_batch(img_batch, mel_batch, frame_batch, coords_batch)
+                img_batch.clear()
+                mel_batch.clear()
+                frame_batch.clear()
+                coords_batch.clear()
 
-                # Mask the lower half of the face
-                img_masked = img_batch_np.copy()
-                img_masked[:, self.img_size // 2:] = 0
-
-                # Combine masked and original images
-                img_batch_np = np.concatenate((img_masked, img_batch_np), axis=3) / 255.0
-                # Add channel dimension to mel spectrograms
-                mel_batch_np = mel_batch_np[..., np.newaxis]
-
-                yield img_batch_np, mel_batch_np, frame_batch, coords_batch
-                # Reset batches
-                img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
-
+        # Yield the remaining batch
         if len(img_batch) > 0:
-            img_batch_np = np.asarray(img_batch)
-            mel_batch_np = np.asarray(mel_batch)
+            yield self._prepare_batch(img_batch, mel_batch, frame_batch, coords_batch)
 
-            # Mask and prepare the final batch
-            img_masked = img_batch_np.copy()
-            img_masked[:, self.img_size // 2:] = 0
-            img_batch_np = np.concatenate((img_masked, img_batch_np), axis=3) / 255.0
-            mel_batch_np = mel_batch_np[..., np.newaxis]
+    def _prepare_batch(self, img_batch, mel_batch, frame_batch, coords_batch):
+        """
+        Prepare data batch tensors from lists for model inference.
+        """
+        img_batch_np = np.asarray(img_batch, dtype=np.uint8)
+        mel_batch_np = np.asarray(mel_batch, dtype=np.float32)
 
-            yield img_batch_np, mel_batch_np, frame_batch, coords_batch
+        # Mask the lower half of the image
+        img_masked = img_batch_np.copy()
+        half = self.img_size // 2
+        img_masked[:, half:] = 0
+        img_batch_np = np.concatenate((img_masked, img_batch_np), axis=3) / 255.0
+        mel_batch_np = mel_batch_np[..., np.newaxis]  # Add channel dimension
+
+        return img_batch_np, mel_batch_np, frame_batch, coords_batch
 
     @staticmethod
     def create_temp_file(ext: str) -> str:
-        """Creates a temporary file with a specific extension.
-
-        Args:
-            ext (str): File extension.
-
-        Returns:
-            str: Path to the temporary file.
-        """
-        # Create a temporary file
         temp_fd, filename = tempfile.mkstemp()
         os.close(temp_fd)
-
-        # Return the filename with the desired extension
         return f'{filename}.{ext}'
 
     def sync(self, face: str, audio_file: str, outfile: str) -> str:
-        """Performs lip-syncing on the input video/image using the provided audio.
-
-        Args:
-            face (str): Path to the input video or image file.
-            audio_file (str): Path to the input audio file.
-            outfile (str): Path to the output video file.
-
-        Returns:
-            str: Path to the output video file.
-
-        Raises:
-            ValueError: If the input face file is invalid.
-            ValueError: If the mel spectrogram contains NaN values.
+        """
+        Performs lip-sync on the input video/image using the provided audio.
         """
         self._filepath = face
 
         if not os.path.isfile(face):
-            raise ValueError('face argument must be a valid path to video/image file')
+            raise ValueError('face argument must be a valid file path.')
 
         if face.split('.')[-1].lower() in ['jpg', 'png', 'jpeg']:
-            # If input is an image, use static mode
             self.static = True
-            # Read the image
             full_frames = [cv2.imread(face)]
             fps = self.fps
         else:
             print('Reading video frames...')
-            # Convert frames from RGB to BGR
             full_frames, fps = read_frames(face)
 
-        print(f"Number of frames available for inference: {len(full_frames)}")
+        print(f"Frames for inference: {len(full_frames)}")
 
+        # Convert non-wav audio to wav if needed
         if not audio_file.endswith('.wav'):
             print('Extracting raw audio...')
-            # Create a temporary WAV file
-            filename = self.create_temp_file('wav')
-            # Extract audio from the input file using ffmpeg
+            wav_filename = self.create_temp_file('wav')
             command = (
-                f'ffmpeg -y -i {audio_file} -strict -2 {filename} '
+                f'ffmpeg -y -i "{audio_file}" -strict -2 "{wav_filename}" '
                 f'-loglevel {self.ffmpeg_loglevel}'
             )
+            subprocess.run(command, shell=True, check=True)
+            audio_file = wav_filename
 
-            subprocess.call(command, shell=True)
-            audio_file = filename
-
-        # Load the audio file
+        # Load and process audio
         wav = audio.load_wav(audio_file, 16000)
-        # Generate mel spectrogram from the audio
         mel = audio.melspectrogram(wav)
+        if np.isnan(mel).any():
+            raise ValueError('Mel contains NaN! Add a small epsilon to the audio and try again.')
+
         print(f"Mel spectrogram shape: {mel.shape}")
 
-        if np.isnan(mel.reshape(-1)).sum() > 0:
-            # Check for NaN values in mel spectrogram
-            raise ValueError(
-                'Mel contains NaN! Add a small epsilon noise to the wav file and try again.'
-            )
+        # Split mel spectrogram into chunks
+        mel_chunks = self._split_mel_chunks(mel, fps)
 
+        # Load model once
+        model = load_model(self.model, self.device, self.checkpoint_path)
+        print("Model loaded")
+
+        # Prepare video writer
+        frame_h, frame_w = full_frames[0].shape[:2]
+        temp_result_avi = self.create_temp_file('avi')
+        out = cv2.VideoWriter(
+            temp_result_avi,
+            cv2.VideoWriter_fourcc(*'DIVX'),
+            fps,
+            (frame_w, frame_h),
+        )
+
+        # Run inference batches
+        data_generator = self.datagen(full_frames.copy(), mel_chunks)
+        total_batches = int(np.ceil(float(len(mel_chunks)) / self.wav2lip_batch_size))
+        for (img_batch_np, mel_batch_np, frames, coords) in tqdm(data_generator, total=total_batches, desc="Lip-sync Inference"):
+            # Convert to torch tensors
+            img_batch_t = torch.FloatTensor(np.transpose(img_batch_np, (0, 3, 1, 2))).to(self.device)
+            mel_batch_t = torch.FloatTensor(np.transpose(mel_batch_np, (0, 3, 1, 2))).to(self.device)
+
+            with torch.no_grad():
+                pred = model(mel_batch_t, img_batch_t)
+
+            # Convert predictions to NumPy and write to output
+            pred_np = (pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.0).astype(np.uint8)
+            for p, f, c in zip(pred_np, frames, coords):
+                y1, y2, x1, x2 = c
+                p_resized = cv2.resize(p, (x2 - x1, y2 - y1))
+                f[y1:y2, x1:x2] = p_resized
+                out.write(f)
+
+        out.release()
+
+        # Combine output with original audio
+        command = (
+            f'ffmpeg -y -i "{audio_file}" -i "{temp_result_avi}" -strict -2 '
+            f'-q:v 1 "{outfile}" -loglevel {self.ffmpeg_loglevel}'
+        )
+        subprocess.run(command, shell=True, check=True)
+
+        return outfile
+
+    def _split_mel_chunks(self, mel: np.ndarray, fps: float) -> list:
+        """
+        Splits the mel spectrogram into fixed-size chunks for inference.
+        """
         mel_chunks = []
-        mel_idx_multiplier = 80.0 / fps  # 80 mel frames per second of audio
+        mel_length = mel.shape[1]
+        mel_idx_multiplier = 80.0 / fps
         i = 0
         while True:
             start_idx = int(i * mel_idx_multiplier)
-            if start_idx + self.mel_step_size > len(mel[0]):
-                # If end is reached, use the last mel_step_size frames
+            end_idx = start_idx + self.mel_step_size
+            if end_idx > mel_length:
                 mel_chunks.append(mel[:, -self.mel_step_size:])
                 break
-            # Append a chunk of mel spectrogram
-            mel_chunks.append(mel[:, start_idx: start_idx + self.mel_step_size])
+            mel_chunks.append(mel[:, start_idx:end_idx])
             i += 1
-
-        print(f"Length of mel chunks: {len(mel_chunks)}")
-
-        batch_size = self.wav2lip_batch_size
-        # Generate data batches
-        gen = self.datagen(full_frames.copy(), mel_chunks)
-
-        temp_result_avi = self.create_temp_file('avi')
-        for i, (img_batch, mel_batch, frames, coords) in enumerate(
-            tqdm(gen, total=int(np.ceil(float(len(mel_chunks)) / batch_size)))
-        ):
-            if i == 0:
-                # Load the Wav2Lip model
-                model = load_model(self.model, self.device, self.checkpoint_path)
-                print("Model loaded")
-
-                # Get frame dimensions
-                frame_h, frame_w = full_frames[0].shape[:-1]
-                # Initialize the video writer
-                out = cv2.VideoWriter(
-                    temp_result_avi,
-                    cv2.VideoWriter_fourcc(*'DIVX'),
-                    fps,
-                    (frame_w, frame_h),
-                )
-
-            # Convert image and mel batches to torch tensors
-            img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(self.device)
-            mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(self.device)
-
-            with torch.no_grad():
-                # Generate predictions from the model
-                pred = model(mel_batch, img_batch)
-
-            # Convert predictions to NumPy arrays
-            pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.0
-
-            for p, f, c in zip(pred, frames, coords):
-                y1, y2, x1, x2 = c
-                # Resize the predicted face region to match original
-                p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
-
-                # Replace the face region in the frame with the prediction
-                f[y1:y2, x1:x2] = p
-                # Write the frame to the output video
-                out.write(f)
-
-        # Release the video writer
-        out.release()
-
-        # Combine the generated video with the original audio using ffmpeg
-        command = (
-            f'ffmpeg -y -i {audio_file} -i {temp_result_avi} -strict -2 '
-            f'-q:v 1 {outfile} -loglevel {self.ffmpeg_loglevel}'
-        )
-        subprocess.call(command, shell=True)
-
-        return outfile
+        print(f"Total mel chunks: {len(mel_chunks)}")
+        return mel_chunks
