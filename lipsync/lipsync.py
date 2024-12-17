@@ -6,12 +6,11 @@ from tqdm import tqdm
 import torch
 import tempfile
 import pickle
-
 from lipsync import audio
-from lipsync import face_detection
-from lipsync.helpers import read_frames
+from lipsync.helpers import read_frames, get_face_box
 from lipsync.models import load_model
 from typing import List, Tuple, Union
+import face_alignment
 
 
 class LipSync:
@@ -23,7 +22,6 @@ class LipSync:
         static (bool): If True, uses only the first video frame for inference.
         fps (float): Frames per second, used when input is a static image.
         pads (List[int]): Padding for face bounding boxes as [top, bottom, left, right].
-        face_det_batch_size (int): Batch size for face detection inference.
         wav2lip_batch_size (int): Batch size for Wav2Lip model inference.
         resize_factor (int): Factor by which to reduce the resolution of the input frames.
         crop (List[int]): Crop dimensions [top, bottom, left, right] for input frames.
@@ -45,7 +43,6 @@ class LipSync:
     static: bool = False
     fps: float = 25.0
     pads: List[int] = [0, 10, 0, 0]
-    face_det_batch_size: int = 16
     wav2lip_batch_size: int = 128
     resize_factor: int = 1
     crop: List[int] = [0, -1, 0, -1]
@@ -139,29 +136,18 @@ class LipSync:
         if cache:
             return cache
 
-        detector = face_detection.FaceAlignment(
-            face_detection.LandmarksType._2D,
-            flip_input=False, device=self.device
+        detector = face_alignment.FaceAlignment(
+            landmarks_type=face_alignment.LandmarksType.TWO_D,
+            face_detector='sfd',
+            device=self.device
         )
 
-        batch_size = self.face_det_batch_size
         predictions = []
-
-        while True:
-            try:
-                for i in tqdm(range(0, len(images), batch_size), desc="Face Detection"):
-                    batch = np.array(images[i:i + batch_size])
-                    preds = detector.get_detections_for_batch(batch)
-                    predictions.extend(preds)
-            except RuntimeError:
-                if batch_size == 1:
-                    del detector
-                    raise RuntimeError('Image too large for GPU. Try reducing resize_factor.')
-                batch_size //= 2
-                print(f'OOM encountered. Reducing batch size to {batch_size}. Retrying...')
-                predictions.clear()
-                continue
-            break
+        for i in tqdm(range(0, len(images)), desc="Face Detection"):
+            landmarks = detector.get_landmarks_from_image(images[i], return_bboxes=True)
+            predictions.append(
+                get_face_box(landmarks)
+            )
 
         results = []
         pady1, pady2, padx1, padx2 = self.pads
@@ -169,7 +155,6 @@ class LipSync:
 
         for rect, image in zip(predictions, images):
             if rect is None:
-                cv2.imwrite('temp/faulty_frame.jpg', image)
                 del detector
                 raise ValueError('Face not detected! Ensure all frames contain a face.')
 
