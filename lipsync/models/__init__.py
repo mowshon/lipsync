@@ -27,7 +27,7 @@ def _load(checkpoint_path, device):
 
     # Load checkpoint on the specified device
     if device == 'cuda':
-        return torch.load(checkpoint_path)
+        return torch.load(checkpoint_path, weights_only=True)
 
     return torch.load(checkpoint_path, map_location=lambda storage, _: storage)
 
