@@ -16,26 +16,6 @@ import face_alignment
 class LipSync:
     """
     Class for lip-syncing videos using the Wav2Lip model.
-
-    Attributes:
-        checkpoint_path (str): Path to the saved Wav2Lip model checkpoint.
-        static (bool): If True, uses only the first video frame for inference.
-        fps (float): Frames per second, used when input is a static image.
-        pads (List[int]): Padding for face bounding boxes as [top, bottom, left, right].
-        wav2lip_batch_size (int): Batch size for Wav2Lip model inference.
-        resize_factor (int): Factor by which to reduce the resolution of the input frames.
-        crop (List[int]): Crop dimensions [top, bottom, left, right] for input frames.
-        box (List[int]): Fixed bounding box coordinates [y1, y2, x1, x2] for the face.
-        rotate (bool): If True, rotates the input frames by 90 degrees.
-        nosmooth (bool): If True, disables temporal smoothing of face bounding boxes.
-        save_cache (bool): If True, enables caching of face detection results.
-        cache_dir (str): Directory path to store cached face detection results.
-        _filepath (str): Internal path to the input face/video file.
-        img_size (int): Size to which the face region is resized for model input.
-        mel_step_size (int): Step size for the mel spectrogram chunks fed into the model.
-        device (str): Device on which the model runs, either 'cuda' or 'cpu'.
-        ffmpeg_loglevel (str): Log level for ffmpeg operations, e.g. 'verbose'.
-        model (str): Name of the model to load (e.g., 'wav2lip').
     """
 
     # Default parameters
@@ -61,13 +41,9 @@ class LipSync:
     def __init__(self, **kwargs):
         """
         Initializes LipSync with custom parameters.
-
-        Args:
-            **kwargs: Arbitrary keyword arguments to override class default attributes.
         """
         device = kwargs.get('device', self.device)
         self.device = 'cuda' if (device == 'cuda' and torch.cuda.is_available()) else 'cpu'
-        print('Using device:', self.device)
 
         # Update class attributes with provided keyword arguments
         for key, value in kwargs.items():
@@ -77,13 +53,6 @@ class LipSync:
     def get_smoothened_boxes(boxes: np.ndarray, t: int) -> np.ndarray:
         """
         Smoothens bounding boxes over a temporal window.
-
-        Args:
-            boxes (np.ndarray): An array of bounding boxes of shape (N,4).
-            t (int): Temporal window size for smoothing.
-
-        Returns:
-            np.ndarray: Smoothened bounding boxes.
         """
         for i in range(len(boxes)):
             window_end = min(i + t, len(boxes))
@@ -94,9 +63,6 @@ class LipSync:
     def get_cache_filename(self) -> str:
         """
         Generates a filename for caching face detection results.
-
-        Returns:
-            str: The full path to the cache file.
         """
         filename = os.path.basename(self._filepath)
         return os.path.join(self.cache_dir, f'{filename}.pk')
@@ -104,38 +70,22 @@ class LipSync:
     def get_from_cache(self) -> Union[List, bool]:
         """
         Retrieves face detection results from cache if available.
-
-        Returns:
-            Union[List, bool]: Cached results if available, False otherwise.
         """
         if not self.save_cache:
             return False
+
         cache_filename = self.get_cache_filename()
         if os.path.isfile(cache_filename):
             print(f'Loading from cache: {cache_filename}')
             with open(cache_filename, 'rb') as cached_file:
                 return pickle.load(cached_file)
+
         return False
 
-    def face_detect(self, images: List[np.ndarray]) -> List[Tuple[np.ndarray, Tuple[int, int, int, int]]]:
+    def detect_faces_in_frames(self, images: List[np.ndarray]) -> List[Tuple[int, int, int, int]]:
         """
-        Performs face detection on a list of images.
-
-        Args:
-            images (List[np.ndarray]): A list of frames (images) in BGR format.
-
-        Returns:
-            List[Tuple[np.ndarray, Tuple[int, int, int, int]]]: A list of tuples containing
-            the cropped face image and its bounding box coordinates (y1, y2, x1, x2).
-
-        Raises:
-            ValueError: If a face is not detected in one or more frames.
-            RuntimeError: If the image is too large for GPU processing.
+        Detect faces in the given frames using face_alignment.
         """
-        cache = self.get_from_cache()
-        if cache:
-            return cache
-
         detector = face_alignment.FaceAlignment(
             landmarks_type=face_alignment.LandmarksType.TWO_D,
             face_detector='sfd',
@@ -145,25 +95,30 @@ class LipSync:
         predictions = []
         for i in tqdm(range(0, len(images)), desc="Face Detection"):
             landmarks = detector.get_landmarks_from_image(images[i], return_bboxes=True)
-            predictions.append(
-                get_face_box(landmarks)
-            )
+            predictions.append(get_face_box(landmarks))
 
-        results = []
+        del detector
+        return predictions
+
+    def process_face_boxes(self, predictions: List, images: List[np.ndarray]) -> List[List]:
+        """
+        Process face bounding boxes, apply smoothing, and crop faces.
+        """
         pady1, pady2, padx1, padx2 = self.pads
         img_h, img_w = images[0].shape[:2]
 
+        # Convert predictions to bounding boxes
+        results = []
         for rect, image in zip(predictions, images):
             if rect is None:
-                del detector
                 raise ValueError('Face not detected! Ensure all frames contain a face.')
-
             y1 = max(0, rect[1] - pady1)
             y2 = min(img_h, rect[3] + pady2)
             x1 = max(0, rect[0] - padx1)
             x2 = min(img_w, rect[2] + padx2)
             results.append([x1, y1, x2, y2])
 
+        # Smooth bounding boxes if needed
         boxes = np.array(results)
         if not self.nosmooth:
             boxes = self.get_smoothened_boxes(boxes, t=5)
@@ -173,8 +128,20 @@ class LipSync:
             face_img = image[int(y1): int(y2), int(x1): int(x2)]
             cropped_results.append([face_img, (int(y1), int(y2), int(x1), int(x2))])
 
-        del detector
+        return cropped_results
 
+    def face_detect(self, images: List[np.ndarray]) -> List[Tuple[np.ndarray, Tuple[int, int, int, int]]]:
+        """
+        Performs face detection on a list of images.
+        """
+        cache = self.get_from_cache()
+        if cache:
+            return cache
+
+        predictions = self.detect_faces_in_frames(images)
+        cropped_results = self.process_face_boxes(predictions, images)
+
+        # Cache results if enabled
         if self.save_cache:
             with open(self.get_cache_filename(), 'wb') as cached_file:
                 pickle.dump(cropped_results, cached_file)
@@ -188,32 +155,10 @@ class LipSync:
     ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray], List[Tuple[int, int, int, int]]]:
         """
         Generator that yields batches of images and mel spectrogram chunks.
-
-        Args:
-            frames (List[np.ndarray]): A list of video frames (BGR format).
-            mels (List[np.ndarray]): A list of mel spectrogram chunks.
-
-        Yields:
-            Tuple[np.ndarray, np.ndarray, List[np.ndarray], List[Tuple[int, int, int, int]]]:
-                img_batch_np: Numpy array of shape (B, H, W, C*2) containing masked and unmasked images.
-                mel_batch_np: Numpy array of shape (B, mel_T, mel_F, 1) containing mel spectrograms.
-                frame_batch: A list of corresponding original frames.
-                coords_batch: A list of coordinates (y1, y2, x1, x2) for each face.
         """
-        if self.box[0] == -1:
-            face_det_results = self.face_detect(frames if not self.static else [frames[0]])
-        else:
-            print('Using specified bounding box, skipping face detection.')
-            y1, y2, x1, x2 = self.box
-            face_det_results = [
-                [f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in frames
-            ]
-
-        img_batch = []
-        mel_batch = []
-        frame_batch = []
-        coords_batch = []
+        face_det_results = self._get_face_detections(frames)
         batch_size = self.wav2lip_batch_size
+        img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
         for i, m in enumerate(mels):
             idx = 0 if self.static else (i % len(frames))
@@ -233,8 +178,22 @@ class LipSync:
                 frame_batch.clear()
                 coords_batch.clear()
 
+        # Yield remaining batch if any
         if len(img_batch) > 0:
             yield self._prepare_batch(img_batch, mel_batch, frame_batch, coords_batch)
+
+    def _get_face_detections(self, frames: List[np.ndarray]) -> List[List]:
+        """
+        Retrieve or compute face detections.
+        """
+        if self.box[0] == -1:
+            # No manual bounding box provided, detect faces
+            return self.face_detect(frames if not self.static else [frames[0]])
+        else:
+            # Use provided bounding box
+            print('Using specified bounding box, skipping face detection.')
+            y1, y2, x1, x2 = self.box
+            return [[f[y1:y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
 
     def _prepare_batch(
         self,
@@ -245,20 +204,11 @@ class LipSync:
     ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray], List[Tuple[int, int, int, int]]]:
         """
         Prepares a batch of images and mel spectrograms for inference.
-
-        Args:
-            img_batch (List[np.ndarray]): List of face images (BGR).
-            mel_batch (List[np.ndarray]): List of mel spectrogram chunks.
-            frame_batch (List[np.ndarray]): Original frames corresponding to the images.
-            coords_batch (List[Tuple[int, int, int, int]]): Bounding box coordinates.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray, List[np.ndarray], List[Tuple[int, int, int, int]]]:
-                A tuple (img_batch_np, mel_batch_np, frame_batch, coords_batch) ready for model inference.
         """
         img_batch_np = np.asarray(img_batch, dtype=np.uint8)
         mel_batch_np = np.asarray(mel_batch, dtype=np.float32)
 
+        # Mask the lower half of the image
         half = self.img_size // 2
         img_masked = img_batch_np.copy()
         img_masked[:, half:] = 0
@@ -271,12 +221,6 @@ class LipSync:
     def create_temp_file(ext: str) -> str:
         """
         Creates a temporary file with a specific extension.
-
-        Args:
-            ext (str): The file extension (without the dot).
-
-        Returns:
-            str: The full path to the created temporary file.
         """
         temp_fd, filename = tempfile.mkstemp()
         os.close(temp_fd)
@@ -285,20 +229,27 @@ class LipSync:
     def sync(self, face: str, audio_file: str, outfile: str) -> str:
         """
         Performs lip-syncing on the input video/image using the provided audio.
-
-        Args:
-            face (str): Path to the input video or image file.
-            audio_file (str): Path to the input audio file.
-            outfile (str): Path to the output video file.
-
-        Returns:
-            str: The path to the output video file.
-
-        Raises:
-            ValueError: If the input face file is invalid or if the mel spectrogram contains NaN values.
         """
         self._filepath = face
+        full_frames, fps = self._load_input_face(face)
+        audio_file = self._prepare_audio(audio_file)
+        mel = self._generate_mel_spectrogram(audio_file)
+        mel_chunks = self._split_mel_chunks(mel, fps)
+        model = self._load_model_for_inference()
 
+        temp_result_avi = self.create_temp_file('avi')
+        out = self._prepare_video_writer(temp_result_avi, full_frames[0].shape[:2], fps)
+
+        self._perform_inference(model, full_frames, mel_chunks, out)
+        out.release()
+
+        self._merge_audio_video(audio_file, temp_result_avi, outfile)
+        return outfile
+
+    def _load_input_face(self, face: str) -> Tuple[List[np.ndarray], float]:
+        """
+        Loads the input face (video or image) and returns frames and fps.
+        """
         if not os.path.isfile(face):
             raise ValueError('face argument must be a valid file path.')
 
@@ -309,9 +260,13 @@ class LipSync:
         else:
             print('Reading video frames...')
             full_frames, fps = read_frames(face)
-
         print(f"Frames for inference: {len(full_frames)}")
+        return full_frames, fps
 
+    def _prepare_audio(self, audio_file: str) -> str:
+        """
+        Prepares (extracts) raw audio if not in .wav format.
+        """
         if not audio_file.endswith('.wav'):
             print('Extracting raw audio...')
             wav_filename = self.create_temp_file('wav')
@@ -321,69 +276,100 @@ class LipSync:
             )
             subprocess.run(command, shell=True, check=True)
             audio_file = wav_filename
+        return audio_file
 
+    @staticmethod
+    def _generate_mel_spectrogram(audio_file: str) -> np.ndarray:
+        """
+        Generates the mel spectrogram from the given audio file.
+        """
         wav = audio.load_wav(audio_file, 16000)
         mel = audio.melspectrogram(wav)
         if np.isnan(mel).any():
             raise ValueError('Mel contains NaN! Add a small epsilon to the audio and try again.')
-
         print(f"Mel spectrogram shape: {mel.shape}")
+        return mel
 
-        mel_chunks = self._split_mel_chunks(mel, fps)
-
+    def _load_model_for_inference(self) -> torch.nn.Module:
+        """
+        Loads the lip sync model for inference.
+        """
         model = load_model(self.model, self.device, self.checkpoint_path)
         print("Model loaded")
+        return model
 
-        frame_h, frame_w = full_frames[0].shape[:2]
-        temp_result_avi = self.create_temp_file('avi')
-        out = cv2.VideoWriter(
-            temp_result_avi,
+    @staticmethod
+    def _prepare_video_writer(filename: str, frame_shape: Tuple[int, int], fps: float) -> cv2.VideoWriter:
+        """
+        Prepares the VideoWriter for output.
+        """
+        frame_h, frame_w = frame_shape
+        return cv2.VideoWriter(
+            filename,
             cv2.VideoWriter_fourcc(*'DIVX'),
             fps,
             (frame_w, frame_h),
         )
 
+    def _perform_inference(
+        self,
+        model: torch.nn.Module,
+        full_frames: List[np.ndarray],
+        mel_chunks: List[np.ndarray],
+        out: cv2.VideoWriter,
+    ):
+        """
+        Runs the inference loop: generates data, passes through model, and writes results.
+        """
         data_generator = self.datagen(full_frames.copy(), mel_chunks)
         total_batches = int(np.ceil(len(mel_chunks) / self.wav2lip_batch_size))
 
-        for (img_batch_np, mel_batch_np, frames, coords) in tqdm(data_generator, total=total_batches, desc="Lip-sync Inference"):
+        steps = tqdm(data_generator, total=total_batches, desc="Lip-sync Inference")
+        for (img_batch_np, mel_batch_np, frames, coords) in steps:
             img_batch_t = torch.FloatTensor(np.transpose(img_batch_np, (0, 3, 1, 2))).to(self.device)
             mel_batch_t = torch.FloatTensor(np.transpose(mel_batch_np, (0, 3, 1, 2))).to(self.device)
 
             with torch.no_grad():
                 pred = model(mel_batch_t, img_batch_t)
 
-            pred_np = (pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.0).astype(np.uint8)
-            for p, f, c in zip(pred_np, frames, coords):
-                y1, y2, x1, x2 = c
-                p_resized = cv2.resize(p, (x2 - x1, y2 - y1))
-                f[y1:y2, x1:x2] = p_resized
-                out.write(f)
+            self._write_predicted_frames(pred, frames, coords, out)
 
-        out.release()
+    @staticmethod
+    def _write_predicted_frames(
+        pred: torch.Tensor,
+        frames: List[np.ndarray],
+        coords: List[Tuple[int, int, int, int]],
+        out: cv2.VideoWriter
+    ):
+        """
+        Writes the predicted frames (lipsynced faces) into the output video.
+        """
+        pred_np = (pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.0).astype(np.uint8)
+        for p, f, c in zip(pred_np, frames, coords):
+            y1, y2, x1, x2 = c
+            p_resized = cv2.resize(p, (x2 - x1, y2 - y1))
+            f[y1:y2, x1:x2] = p_resized
+            out.write(f)
 
+    def _merge_audio_video(self, audio_file: str, temp_video: str, outfile: str):
+        """
+        Merges the generated video with the input audio.
+        """
         command = (
-            f'ffmpeg -y -i "{audio_file}" -i "{temp_result_avi}" -strict -2 '
+            f'ffmpeg -y -i "{audio_file}" -i "{temp_video}" -strict -2 '
             f'-q:v 1 "{outfile}" -loglevel {self.ffmpeg_loglevel}'
         )
         subprocess.run(command, shell=True, check=True)
 
-        return outfile
-
     def _split_mel_chunks(self, mel: np.ndarray, fps: float) -> List[np.ndarray]:
         """
         Splits the mel spectrogram into fixed-size chunks.
-
-        Args:
-            mel (np.ndarray): The mel spectrogram array of shape (mel_channels, time_frames).
-            fps (float): Frames per second of the video.
-
-        Returns:
-            List[np.ndarray]: A list of mel chunks, each of shape (mel_channels, mel_step_size).
         """
+
         mel_chunks = []
         mel_length = mel.shape[1]
         mel_idx_multiplier = 80.0 / fps
+
         i = 0
         while True:
             start_idx = int(i * mel_idx_multiplier)
@@ -393,5 +379,6 @@ class LipSync:
                 break
             mel_chunks.append(mel[:, start_idx:end_idx])
             i += 1
+
         print(f"Total mel chunks: {len(mel_chunks)}")
         return mel_chunks
