@@ -1,7 +1,6 @@
-av
-tf-keras
-retina-face
 torch
+opencv-python
+face_alignment
+tqdm
+numpy
 librosa
-scipy
-facenet-pytorch
