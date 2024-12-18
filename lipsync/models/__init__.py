@@ -29,7 +29,11 @@ def _load(checkpoint_path, device):
     if device == 'cuda':
         return torch.load(checkpoint_path, weights_only=True)
 
-    return torch.load(checkpoint_path, map_location=lambda storage, _: storage)
+    return torch.load(
+        checkpoint_path,
+        map_location=lambda storage, _: storage,
+        weights_only=True
+    )
 
 
 def load_model(model_name: str, device: str, checkpoint: str):
