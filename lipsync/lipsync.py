@@ -76,7 +76,6 @@ class LipSync:
 
         cache_filename = self.get_cache_filename()
         if os.path.isfile(cache_filename):
-            print(f'Loading from cache: {cache_filename}')
             with open(cache_filename, 'rb') as cached_file:
                 return pickle.load(cached_file)
 
@@ -191,7 +190,6 @@ class LipSync:
             return self.face_detect(frames if not self.static else [frames[0]])
         else:
             # Use provided bounding box
-            print('Using specified bounding box, skipping face detection.')
             y1, y2, x1, x2 = self.box
             return [[f[y1:y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
 
@@ -258,9 +256,8 @@ class LipSync:
             full_frames = [cv2.imread(face)]
             fps = self.fps
         else:
-            print('Reading video frames...')
             full_frames, fps = read_frames(face)
-        print(f"Frames for inference: {len(full_frames)}")
+
         return full_frames, fps
 
     def _prepare_audio(self, audio_file: str) -> str:
@@ -268,7 +265,6 @@ class LipSync:
         Prepares (extracts) raw audio if not in .wav format.
         """
         if not audio_file.endswith('.wav'):
-            print('Extracting raw audio...')
             wav_filename = self.create_temp_file('wav')
             command = (
                 f'ffmpeg -y -i "{audio_file}" -strict -2 "{wav_filename}" '
@@ -287,7 +283,6 @@ class LipSync:
         mel = audio.melspectrogram(wav)
         if np.isnan(mel).any():
             raise ValueError('Mel contains NaN! Add a small epsilon to the audio and try again.')
-        print(f"Mel spectrogram shape: {mel.shape}")
         return mel
 
     def _load_model_for_inference(self) -> torch.nn.Module:
@@ -295,7 +290,6 @@ class LipSync:
         Loads the lip sync model for inference.
         """
         model = load_model(self.model, self.device, self.checkpoint_path)
-        print("Model loaded")
         return model
 
     @staticmethod
@@ -380,5 +374,4 @@ class LipSync:
             mel_chunks.append(mel[:, start_idx:end_idx])
             i += 1
 
-        print(f"Total mel chunks: {len(mel_chunks)}")
         return mel_chunks
