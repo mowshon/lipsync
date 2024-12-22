@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "lipsync"
+version = "0.1.0"
+description = "lipsync is a simple and updated Python library for lip synchronization, based on Wav2Lip. It synchronizes lips in videos and images based on provided audio, supports CPU/CUDA, and uses caching for faster processing."
+authors = ["Vasile Buldumac <va.buldumac@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/mowshon/lipsync"
+keywords = ["lipsync", "lip synchronization", "Wav2Lip", "audio to video", "video processing", "speech synchronization"]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+torch = "^2.5.1"
+opencv-python = "^4.10.0.84"
+face-alignment = "^1.4.1"
+tqdm = "^4.67.1"
+librosa = "^0.10.2.post1"
+av = "^14.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

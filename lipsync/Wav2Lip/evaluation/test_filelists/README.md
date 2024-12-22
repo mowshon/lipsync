@@ -1,1 +1,0 @@
-Place LRS2, LRW, and LRS3 (and any other) test set filelists here.

@@ -1,0 +1,7 @@
+torch
+opencv-python
+face_alignment
+tqdm
+numpy
+librosa
+av
