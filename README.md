@@ -40,6 +40,8 @@ lipsync works with two different pre-trained models:
 pip install lipsync
 ```
 
+---
+
 ## Usage Example
 
 Below is a simple example in Python. This assumes you have the model weights (either `wav2lip.pth` or `wav2lip_gan.pth`) in a `weights/` folder.
@@ -65,13 +67,14 @@ lip.sync(
 ```
 
 ### Important Parameters
-- model: `'wav2lip'` or `'wav2lip_gan'`
-- checkpoint_path: Path to the model weights (e.g., `wav2lip.pth`, `wav2lip_gan.pth`)
-- nosmooth: Set `True` to disable smoothing
-- device: `'cpu'` or `'cuda'`
-- cache_dir: Directory for saving frames
-- save_cache: Set `True` to save frames to `cache_dir` for faster re-runs
+- **model**: `'wav2lip'` or `'wav2lip_gan'`
+- **checkpoint_path**: Path to the model weights (e.g., `wav2lip.pth`, `wav2lip_gan.pth`)
+- **nosmooth**: Set `True` to disable smoothing
+- **device**: `'cpu'` or `'cuda'`
+- **cache_dir**: Directory for saving frames
+- **save_cache**: Set `True` to save frames to `cache_dir` for faster re-runs
 
+---
 
 ### Ethical Use
 
