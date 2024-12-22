@@ -67,7 +67,7 @@ lip.sync(
 ```
 
 ### Important Parameters
-- **model**: `'wav2lip'` or `'wav2lip_gan'`
+- **model**: Only `'wav2lip'` at the moment
 - **checkpoint_path**: Path to the model weights (e.g., `wav2lip.pth`, `wav2lip_gan.pth`)
 - **nosmooth**: Set `True` to disable smoothing
 - **device**: `'cpu'` or `'cuda'`
