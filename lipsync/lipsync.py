@@ -20,7 +20,6 @@ class LipSync:
 
     # Default parameters
     checkpoint_path: str = ''
-    static: bool = False
     fps: float = 25.0
     pads: List[int] = [0, 10, 0, 0]
     wav2lip_batch_size: int = 128
@@ -158,7 +157,7 @@ class LipSync:
         img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
         for i, m in enumerate(mels):
-            idx = 0 if self.static else (i % len(frames))
+            idx = (i % len(frames))
             frame_to_save = frames[idx]
             face, coords = face_det_results[idx]
             face_resized = cv2.resize(face, (self.img_size, self.img_size))
@@ -238,7 +237,6 @@ class LipSync:
             raise ValueError('face argument must be a valid file path.')
 
         if face.split('.')[-1].lower() in ['jpg', 'png', 'jpeg']:
-            self.static = True
             full_frames = [cv2.imread(face)]
             fps = self.fps
         else:
