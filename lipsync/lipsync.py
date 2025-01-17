@@ -26,7 +26,6 @@ class LipSync:
     wav2lip_batch_size: int = 128
     resize_factor: int = 1
     box: List[int] = [-1, -1, -1, -1]
-    rotate: bool = False
     nosmooth: bool = False
     save_cache: bool = True
     cache_dir: str = tempfile.gettempdir()
