@@ -1,3 +1,7 @@
+"""
+Custom convolutional modules with optional residual connections for lipsync models.
+"""
+
 import torch
 from torch import nn
 
@@ -30,9 +34,19 @@ class Conv2d(nn.Module):
         self.residual = residual
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the Conv2d module.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (N, cin, H, W).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (N, cout, H', W').
+        """
         out = self.conv_block(x)
         if self.residual:
             out = out + x
+
         return self.act(out)
 
 
@@ -62,5 +76,14 @@ class Conv2dTranspose(nn.Module):
         self.act = nn.ReLU(inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the Conv2dTranspose module.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (N, cin, H, W).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (N, cout, H', W').
+        """
         out = self.conv_block(x)
         return self.act(out)

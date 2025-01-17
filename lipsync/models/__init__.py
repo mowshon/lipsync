@@ -35,7 +35,8 @@ def _load_checkpoint(checkpoint_path: str, device: str) -> Any:
     try:
         checkpoint = torch.load(
             checkpoint_path,
-            map_location=torch.device(device)
+            map_location=torch.device(device),
+            weights_only=True
         )
         return checkpoint
     except FileNotFoundError as e:
