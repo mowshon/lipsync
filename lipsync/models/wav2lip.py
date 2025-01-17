@@ -1,17 +1,30 @@
+"""
+Definition of the Wav2Lip model, which generates lip-synced video frames from audio
+and face frames. It includes both the audio encoder and the face encoder/decoder modules.
+"""
+
 import torch
 from torch import nn
+
 from lipsync.models.conv import Conv2dTranspose, Conv2d
 
 
 class Wav2Lip(nn.Module):
-    """Wav2Lip model for generating lip-synced videos.
+    """
+    Wav2Lip model for generating lip-synced videos.
 
     This model takes as input sequences of audio and corresponding face frames and produces
     synthesized video frames where the lip movements are synchronized with the given audio.
     """
 
     def __init__(self):
-        """Initializes the Wav2Lip model modules."""
+        """
+        Initializes the Wav2Lip model modules:
+        - Face encoder blocks
+        - Audio encoder
+        - Face decoder blocks
+        - Output block
+        """
         super(Wav2Lip, self).__init__()
 
         # Face encoder blocks
@@ -107,6 +120,7 @@ class Wav2Lip(nn.Module):
             ),
         ])
 
+        # Output block
         self.output_block = nn.Sequential(
             Conv2d(80, 32, kernel_size=3, stride=1, padding=1),
             nn.Conv2d(32, 3, kernel_size=1, stride=1, padding=0),
@@ -118,7 +132,8 @@ class Wav2Lip(nn.Module):
         audio_sequences: torch.Tensor,
         face_sequences: torch.Tensor
     ) -> torch.Tensor:
-        """Runs the forward pass of the Wav2Lip model.
+        """
+        Runs the forward pass of the Wav2Lip model.
 
         Args:
             audio_sequences (torch.Tensor): The input audio sequences of shape (B, T, 1, 80, 16)
@@ -135,8 +150,15 @@ class Wav2Lip(nn.Module):
 
         # Reshape sequences if input is batched over time
         if input_dim_size > 4:
-            BT = audio_sequences.size(0) * audio_sequences.size(1)
-            audio_sequences = audio_sequences.view(-1, 1, audio_sequences.size(3), audio_sequences.size(4))
+            BT = B * audio_sequences.size(1)
+            audio_sequences = audio_sequences.view(
+                BT,
+                audio_sequences.size(2),
+                audio_sequences.size(3),
+                audio_sequences.size(4)
+            )
+
+            # Face shape: (B, C, T, H, W) => (B, T, C, H, W) => (BT, C, H, W)
             _, C, T, H, W = face_sequences.size()
             face_sequences = face_sequences.permute(0, 2, 1, 3, 4).contiguous().view(-1, C, H, W)
 
@@ -149,9 +171,7 @@ class Wav2Lip(nn.Module):
         for block in self.face_encoder_blocks:
             x = block(x)
             feats.append(x)
-
-        # Reverse feats for easier decoder access
-        feats.reverse()
+        feats.reverse()  # Reverse the order for decoder
 
         # Decode with audio embedding
         x = audio_embedding
@@ -164,8 +184,6 @@ class Wav2Lip(nn.Module):
 
         # Reshape back to original format if needed
         if input_dim_size > 4:
-            # x: (B*T, C, H, W)
-            # Determine T from audio_embedding's batch: B*T
             total_frames = audio_embedding.size(0)
             T = total_frames // B
             x = x.view(B, T, x.size(1), x.size(2), x.size(3)).permute(0, 2, 1, 3, 4)

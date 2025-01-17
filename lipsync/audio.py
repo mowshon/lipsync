@@ -1,30 +1,40 @@
+"""
+Audio processing utilities for lipsync.
+
+Includes loading WAV files, applying preemphasis,
+and computing mel-spectrograms with optional normalization.
+"""
+
 import librosa
 import librosa.filters
 import numpy as np
 from scipy import signal
+
 from lipsync.hparams import HParams
 
 hp = HParams()
 
 
 def load_wav(path: str, sr: int) -> np.ndarray:
-    """Load a WAV file.
+    """
+    Load a WAV file using librosa.
 
     Args:
         path (str): Path to the WAV file.
         sr (int): Sampling rate to load the audio at.
 
     Returns:
-        np.ndarray: Audio time series as a 1D numpy array.
+        np.ndarray: Audio time series as a 1D NumPy array.
     """
     return librosa.core.load(path, sr=sr)[0]
 
 
 def preemphasis_func(wav: np.ndarray, k: float, preemphasize: bool = True) -> np.ndarray:
-    """Apply a preemphasis filter to the waveform.
+    """
+    Apply a preemphasis filter to the waveform.
 
     Args:
-        wav (np.ndarray): Input waveform as a 1D numpy array.
+        wav (np.ndarray): Input waveform as a 1D NumPy array.
         k (float): Preemphasis coefficient.
         preemphasize (bool): Whether to apply preemphasis or not.
 
@@ -35,17 +45,19 @@ def preemphasis_func(wav: np.ndarray, k: float, preemphasize: bool = True) -> np
     # This increases the magnitude of high-frequency components.
     if preemphasize:
         return signal.lfilter([1, -k], [1], wav)
+
     return wav
 
 
 def melspectrogram(wav: np.ndarray) -> np.ndarray:
-    """Compute the mel-spectrogram of a waveform.
+    """
+    Compute the mel-spectrogram of a waveform.
 
     Args:
         wav (np.ndarray): Input waveform array.
 
     Returns:
-        np.ndarray: Mel-spectrogram as a 2D numpy array (num_mels x time).
+        np.ndarray: Mel-spectrogram as a 2D NumPy array (num_mels x time).
     """
     D = _stft(preemphasis_func(wav, hp.preemphasis, hp.preemphasize))
     S = _amp_to_db(_linear_to_mel(np.abs(D))) - hp.ref_level_db
@@ -56,19 +68,26 @@ def melspectrogram(wav: np.ndarray) -> np.ndarray:
 
 
 def _stft(y: np.ndarray) -> np.ndarray:
-    """Compute the STFT of the given waveform.
+    """
+    Compute the STFT of the given waveform.
 
     Args:
         y (np.ndarray): Input waveform.
 
     Returns:
-        np.ndarray: Complex STFT of y. Shape is (1 + n_fft/2, time).
+        np.ndarray: Complex STFT of shape (1 + n_fft//2, time).
     """
-    return librosa.stft(y=y, n_fft=hp.n_fft, hop_length=hp.hop_size, win_length=hp.win_size)
+    return librosa.stft(
+        y=y,
+        n_fft=hp.n_fft,
+        hop_length=hp.hop_size,
+        win_length=hp.win_size
+    )
 
 
 def _linear_to_mel(spectrogram: np.ndarray) -> np.ndarray:
-    """Convert a linear-scale spectrogram to mel-scale.
+    """
+    Convert a linear-scale spectrogram to mel-scale.
 
     Args:
         spectrogram (np.ndarray): Linear frequency spectrogram.
@@ -81,7 +100,8 @@ def _linear_to_mel(spectrogram: np.ndarray) -> np.ndarray:
 
 
 def _build_mel_basis() -> np.ndarray:
-    """Construct a mel-filter bank.
+    """
+    Construct a mel filter bank.
 
     Returns:
         np.ndarray: Mel filter bank matrix.
@@ -97,7 +117,8 @@ def _build_mel_basis() -> np.ndarray:
 
 
 def _amp_to_db(x: np.ndarray) -> np.ndarray:
-    """Convert amplitude to decibels.
+    """
+    Convert amplitude to decibels.
 
     Args:
         x (np.ndarray): Amplitude values.
@@ -110,7 +131,8 @@ def _amp_to_db(x: np.ndarray) -> np.ndarray:
 
 
 def _normalize(spec: np.ndarray) -> np.ndarray:
-    """Normalize the mel-spectrogram.
+    """
+    Normalize the mel-spectrogram.
 
     Args:
         spec (np.ndarray): Decibel-scaled mel-spectrogram.
@@ -139,7 +161,9 @@ def _normalize(spec: np.ndarray) -> np.ndarray:
 
     if hp.symmetric_mels:
         # Symmetric range normalization
-        return (2 * hp.max_abs_value) * ((spec - hp.min_level_db) / (-hp.min_level_db)) - hp.max_abs_value
+        return (2 * hp.max_abs_value) * (
+            (spec - hp.min_level_db) / (-hp.min_level_db)
+        ) - hp.max_abs_value
     else:
         # Asymmetric range normalization
         return hp.max_abs_value * ((spec - hp.min_level_db) / (-hp.min_level_db))
