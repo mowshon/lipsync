@@ -1,3 +1,7 @@
+"""
+Helper utilities for lipsync, including video frame reading and face bounding box extraction.
+"""
+
 import av
 import numpy as np
 from typing import Tuple, List
@@ -45,28 +49,30 @@ def read_frames(face: str) -> Tuple[List[np.ndarray], int]:
         raise ValueError(f"An error occurred while reading the video file: {e}") from e
 
 
-def get_face_box(landmarks: list) -> Tuple[int, int, int, int]:
+def get_face_box(landmarks: list, face_index: int = 0) -> Tuple[int, int, int, int]:
     """
     Extracts and returns the bounding box coordinates of a detected face.
 
     Args:
         landmarks (list): A list containing facial landmarks where the third element
-                          (index 2) represents the bounding box coordinates.
+            (index 2) represents the bounding box coordinates.
+        face_index (int, optional): The index of the face to extract bounding box coordinates.
 
     Returns:
         Tuple[int, int, int, int]: The bounding box coordinates (x1, y1, x2, y2) of the face.
 
     Raises:
         ValueError: If the landmarks list is improperly structured or does not contain
-                    the expected bounding box.
+            the expected bounding box.
     """
     try:
         # Extract the face box from the landmarks
-        face_box = landmarks[2][0]  # Access the bounding box coordinates
+        face_box = landmarks[2][face_index]  # Access the bounding box coordinates
         face_box = np.clip(face_box, 0, None)  # Ensure no negative values
 
         # Convert bounding box values to integers
         x1, y1, x2, y2 = map(int, face_box[:-1])  # Exclude the confidence score (last value)
         return x1, y1, x2, y2
+
     except (IndexError, TypeError, ValueError) as e:
         raise ValueError("Invalid landmarks structure. Could not extract face box.") from e
