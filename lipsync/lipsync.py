@@ -29,7 +29,6 @@ class LipSync:
     nosmooth: bool = False
     save_cache: bool = True
     cache_dir: str = tempfile.gettempdir()
-    _filepath: str = ''
     img_size: int = 96
     mel_step_size: int = 16
     device: str = 'cpu'
