@@ -24,7 +24,6 @@ class LipSync:
     fps: float = 25.0
     pads: List[int] = [0, 10, 0, 0]
     wav2lip_batch_size: int = 128
-    resize_factor: int = 1
     box: List[int] = [-1, -1, -1, -1]
     nosmooth: bool = False
     save_cache: bool = True
@@ -34,6 +33,8 @@ class LipSync:
     device: str = 'cpu'
     ffmpeg_loglevel: str = 'verbose'
     model: str = 'wav2lip'
+
+    _filepath: str = ''
 
     def __init__(self, **kwargs):
         """
