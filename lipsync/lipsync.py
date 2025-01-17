@@ -156,10 +156,12 @@ class LipSync:
         batch_size = self.wav2lip_batch_size
         img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
-        for i, m in enumerate(mels):
-            idx = (i % len(frames))
-            frame_to_save = frames[idx]
-            face, coords = face_det_results[idx]
+        total_frames = len(frames)
+        for index, m in enumerate(mels):
+            index = (index % total_frames)
+
+            frame_to_save = frames[index]
+            face, coords = face_det_results[index]
             face_resized = cv2.resize(face, (self.img_size, self.img_size))
 
             img_batch.append(face_resized)
