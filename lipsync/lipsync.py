@@ -153,7 +153,8 @@ class LipSync:
         """
         Generator that yields batches of images and mel spectrogram chunks.
         """
-        face_det_results = self._get_face_detections(frames)
+        face_det_results = self.face_detect(frames)
+
         batch_size = self.wav2lip_batch_size
         img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
@@ -178,18 +179,6 @@ class LipSync:
         # Yield remaining batch if any
         if len(img_batch) > 0:
             yield self._prepare_batch(img_batch, mel_batch, frame_batch, coords_batch)
-
-    def _get_face_detections(self, frames: List[np.ndarray]) -> List[List]:
-        """
-        Retrieve or compute face detections.
-        """
-        if self.box[0] == -1:
-            # No manual bounding box provided, detect faces
-            return self.face_detect(frames if not self.static else [frames[0]])
-        else:
-            # Use provided bounding box
-            y1, y2, x1, x2 = self.box
-            return [[f[y1:y2, x1:x2], (y1, y2, x1, x2)] for f in frames]
 
     def _prepare_batch(
         self,
