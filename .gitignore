@@ -139,3 +139,5 @@ dmypy.json
 /*.pth
 /test_*.py
 /source
+
+/.DS_Store
