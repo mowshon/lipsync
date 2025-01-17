@@ -221,11 +221,12 @@ class LipSync:
         batch_size = self.wav2lip_batch_size
         img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
+        total_frames = len(frames)
         for i, m in enumerate(mels):
             # Loop over mels in a cyclical manner w.r.t frames
-            idx = i % len(frames)
-            frame_to_save = frames[idx]
-            face, coords = face_det_results[idx]
+            index = i % total_frames
+            frame_to_save = frames[index]
+            face, coords = face_det_results[index]
 
             # Resize the cropped face to the expected input size
             face_resized = cv2.resize(face, (self.img_size, self.img_size))
